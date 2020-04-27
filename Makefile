@@ -1,2 +1,2 @@
 make: src/
-	rustc src/main.rs
+	cargo build
