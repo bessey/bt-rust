@@ -5,7 +5,7 @@ use bendy::{
 use std::fs::File;
 use std::io::prelude::*;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 struct MetaInfo {
     announce: String,
     comment: String,
@@ -13,22 +13,28 @@ struct MetaInfo {
     info: Info,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 struct Info {
     name: String,
     piece_length: u32,
-    pieces: ByteStringWrapper,
+    pieces: PieceSet,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-struct ByteStringWrapper(Vec<u8>);
+#[derive(Debug)]
+struct Sha(Vec<u8>);
 
-impl FromBencode for ByteStringWrapper {
+#[derive(Debug)]
+struct PieceSet(Vec<Sha>);
+
+impl FromBencode for PieceSet {
     const EXPECTED_RECURSION_DEPTH: usize = 0;
 
     fn decode_bencode_object(object: Object) -> Result<Self, Error> {
         let content = AsString::decode_bencode_object(object)?;
-        Ok(ByteStringWrapper(content.0))
+        let chars = content.0;
+        Ok(PieceSet(
+            chars.chunks(20).map(|i| Sha(i.to_vec())).collect(),
+        ))
     }
 }
 fn main() {
@@ -106,7 +112,7 @@ impl FromBencode for Info {
                         .map(Some)?;
                 }
                 (b"pieces", value) => {
-                    pieces = ByteStringWrapper::decode_bencode_object(value)
+                    pieces = PieceSet::decode_bencode_object(value)
                         .context("pieces")
                         .map(Some)?;
                 }
