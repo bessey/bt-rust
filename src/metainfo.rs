@@ -1,131 +1,115 @@
-use bendy::{
-  decoding::{Error, FromBencode, Object, ResultExt},
-  encoding::AsString,
-};
-use std::fs::File;
-use std::io::prelude::*;
+extern crate serde;
+extern crate serde_bencode;
+use serde::Deserialize;
+use serde_bencode::de;
+use std::fs::File as FileIO;
+use std::io::Read;
 
-#[derive(Debug)]
-pub struct MetaInfo {
-  announce: String,
-  comment: String,
-  url_list: Vec<String>,
-  info: Info,
+#[derive(Debug, Deserialize)]
+pub struct Node(String, i64);
+
+#[derive(Debug, Deserialize)]
+pub struct File {
+  path: Vec<String>,
+  length: i64,
+  #[serde(default)]
+  md5sum: Option<String>,
 }
 
-#[derive(Debug)]
-struct Info {
+#[derive(Debug, Deserialize)]
+pub struct Info {
   name: String,
-  piece_length: u32,
-  pieces: PieceSet,
+  #[serde(with = "serde_bytes")]
+  pieces: Vec<u8>,
+  #[serde(rename = "piece length")]
+  piece_length: i64,
+  #[serde(default)]
+  md5sum: Option<String>,
+  #[serde(default)]
+  length: Option<i64>,
+  #[serde(default)]
+  files: Option<Vec<File>>,
+  #[serde(default)]
+  private: Option<u8>,
+  #[serde(default)]
+  path: Option<Vec<String>>,
+  #[serde(default)]
+  #[serde(rename = "root hash")]
+  root_hash: Option<String>,
 }
 
-#[derive(Debug)]
-struct Sha(Vec<u8>);
+#[derive(Debug, Deserialize)]
+pub struct Torrent {
+  info: Info,
+  #[serde(default)]
+  announce: Option<String>,
+  #[serde(default)]
+  nodes: Option<Vec<Node>>,
+  #[serde(default)]
+  encoding: Option<String>,
+  #[serde(default)]
+  #[serde(rename = "announce-list")]
+  announce_list: Option<Vec<Vec<String>>>,
+  #[serde(default)]
+  #[serde(rename = "creation date")]
+  creation_date: Option<i64>,
+  #[serde(rename = "comment")]
+  comment: Option<String>,
+  #[serde(default)]
+  #[serde(rename = "created by")]
+  created_by: Option<String>,
+}
 
-#[derive(Debug)]
-struct PieceSet(Vec<Sha>);
-
-impl FromBencode for PieceSet {
-  const EXPECTED_RECURSION_DEPTH: usize = 0;
-
-  fn decode_bencode_object(object: Object) -> Result<Self, Error> {
-    let content = AsString::decode_bencode_object(object)?;
-    let chars = content.0;
-    Ok(PieceSet(
-      chars.chunks(20).map(|i| Sha(i.to_vec())).collect(),
-    ))
+impl Torrent {
+  pub fn announce(&self) -> String {
+    return match self {
+      Torrent {
+        announce: Some(url),
+        ..
+      } => url.clone(),
+      Torrent {
+        announce_list: Some(urls),
+        ..
+      } => announce_list_first(urls),
+      Torrent { .. } => panic!("No Announce available"),
+    };
   }
-}
 
-impl FromBencode for MetaInfo {
-  fn decode_bencode_object(object: Object) -> Result<Self, Error> {
-    let mut announce = None;
-    let mut comment = None;
-    let mut url_list = None;
-    let mut info = None;
-    let mut dict = object.try_into_dictionary()?;
-    while let Some(pair) = dict.next_pair()? {
-      match pair {
-        (b"announce", value) => {
-          announce = String::decode_bencode_object(value)
-            .context("announce")
-            .map(Some)?;
-        }
-        (b"comment", value) => {
-          comment = String::decode_bencode_object(value)
-            .context("comment")
-            .map(Some)?;
-        }
-        (b"url-list", value) => {
-          url_list = Vec::decode_bencode_object(value)
-            .context("url_list")
-            .map(Some)?;
-        }
-        (b"info", value) => {
-          info = Info::decode_bencode_object(value)
-            .context("info")
-            .map(Some)?;
-        }
-        (unknown_field, _) => println!("Unexpected field {:?}", std::str::from_utf8(unknown_field)),
+  pub fn debug(&self) {
+    println!("name:\t\t{}", self.info.name);
+    println!("announce:\t{:?}", self.announce);
+    println!("nodes:\t\t{:?}", self.nodes);
+    if let &Some(ref al) = &self.announce_list {
+      for a in al {
+        println!("announce list:\t{}", a[0]);
       }
     }
-    let announce = announce.ok_or_else(|| Error::missing_field("announce"))?;
-    let comment = comment.ok_or_else(|| Error::missing_field("comment"))?;
-    let url_list = url_list.ok_or_else(|| Error::missing_field("url_list"))?;
-    let info = info.ok_or_else(|| Error::missing_field("info"))?;
-
-    Ok(MetaInfo {
-      announce,
-      comment,
-      url_list,
-      info,
-    })
-  }
-}
-
-impl FromBencode for Info {
-  fn decode_bencode_object(object: Object) -> Result<Self, Error> {
-    let mut name = None;
-    let mut piece_length = None;
-    let mut pieces = None;
-    let mut dict = object.try_into_dictionary()?;
-    while let Some(pair) = dict.next_pair()? {
-      match pair {
-        (b"name", value) => {
-          name = String::decode_bencode_object(value)
-            .context("name")
-            .map(Some)?;
-        }
-        (b"piece length", value) => {
-          piece_length = u32::decode_bencode_object(value)
-            .context("piece_length")
-            .map(Some)?;
-        }
-        (b"pieces", value) => {
-          pieces = PieceSet::decode_bencode_object(value)
-            .context("pieces")
-            .map(Some)?;
-        }
-        (unknown_field, _) => println!("Unexpected field {:?}", std::str::from_utf8(unknown_field)),
+    println!("creation date:\t{:?}", self.creation_date);
+    println!("comment:\t{:?}", self.comment);
+    println!("created by:\t{:?}", self.created_by);
+    println!("encoding:\t{:?}", self.encoding);
+    println!("piece length:\t{:?}", self.info.piece_length);
+    println!("private:\t{:?}", self.info.private);
+    println!("root hash:\t{:?}", self.info.root_hash);
+    println!("md5sum:\t\t{:?}", self.info.md5sum);
+    println!("path:\t\t{:?}", self.info.path);
+    if let &Some(ref files) = &self.info.files {
+      for f in files {
+        println!("file path:\t{:?}", f.path);
+        println!("file length:\t{}", f.length);
+        println!("file md5sum:\t{:?}", f.md5sum);
       }
     }
-    let name = name.ok_or_else(|| Error::missing_field("name"))?;
-    let pieces = pieces.ok_or_else(|| Error::missing_field("pieces"))?;
-    let piece_length = piece_length.ok_or_else(|| Error::missing_field("piece_length"))?;
-
-    Ok(Info {
-      name,
-      piece_length,
-      pieces,
-    })
   }
 }
 
-pub fn read_torrent_file(path: &str) -> Result<MetaInfo, Error> {
-  let mut file = File::open(path)?;
+pub fn read_torrent_file(path: &str) -> Option<Torrent> {
+  let mut file = FileIO::open(path).ok()?;
   let mut encoded = Vec::new();
-  file.read_to_end(&mut encoded)?;
-  let decoded = MetaInfo::from_bencode(&encoded)?;
-  Ok(decoded)
+  file.read_to_end(&mut encoded).ok()?;
+  return de::from_bytes::<Torrent>(&encoded).ok();
+}
+
+fn announce_list_first(urls: &Vec<Vec<String>>) -> String {
+  return urls.first().unwrap().first().unwrap().clone();
 }
