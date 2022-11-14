@@ -1,3 +1,8 @@
+use std::collections::{btree_set::Union, HashMap};
+
+use crate::bencode::decode_torrent;
+
+mod bencode;
 mod metainfo;
 
 fn main() {
@@ -6,14 +11,10 @@ fn main() {
         Err(error) => panic!("Errorz {:?}", error),
         Ok(decoded) => decoded,
     };
-    metainfo.debug();
-    let client = reqwest::blocking::Client::new();
-    match client
-        .get(&metainfo.announce())
-        .query(&[("lang", "rust")])
-        .send()
-    {
-        Err(e) => panic!("Error {:?}", e),
-        Ok(response) => println!("{:?}", response.text()),
-    };
+
+    println!("Torrent bytes: {}", metainfo.len());
+
+    let torrent = decode_torrent(metainfo);
+
+    println!("{:?}", torrent);
 }
