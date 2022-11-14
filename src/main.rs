@@ -3,8 +3,8 @@ mod metainfo;
 fn main() {
     let target = "./archlinux-2020.01.01-x86_64.iso.torrent";
     let metainfo = match metainfo::read_torrent_file(target) {
-        None => panic!("Errorz"),
-        Some(decoded) => decoded,
+        Err(error) => panic!("Errorz {:?}", error),
+        Ok(decoded) => decoded,
     };
     metainfo.debug();
     let client = reqwest::blocking::Client::new();

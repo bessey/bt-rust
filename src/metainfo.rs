@@ -40,6 +40,10 @@ pub struct Info {
 
 #[derive(Debug, Deserialize)]
 pub struct Torrent {
+  #[serde(with = "serde_bytes")]
+  #[serde(rename = "info")]
+  #[serde(skip_serializing)]
+  info_bytes: Vec<u8>,
   info: Info,
   #[serde(default)]
   announce: Option<String>,
@@ -88,6 +92,7 @@ impl Torrent {
     println!("comment:\t{:?}", self.comment);
     println!("created by:\t{:?}", self.created_by);
     println!("encoding:\t{:?}", self.encoding);
+    println!("info byes:\t{:?}", self.info_bytes);
     println!("piece length:\t{:?}", self.info.piece_length);
     println!("private:\t{:?}", self.info.private);
     println!("root hash:\t{:?}", self.info.root_hash);
@@ -103,11 +108,18 @@ impl Torrent {
   }
 }
 
-pub fn read_torrent_file(path: &str) -> Option<Torrent> {
-  let mut file = FileIO::open(path).ok()?;
+pub fn read_torrent_file(path: &str) -> Result<Torrent, String> {
   let mut encoded = Vec::new();
-  file.read_to_end(&mut encoded).ok()?;
-  return de::from_bytes::<Torrent>(&encoded).ok();
+  match FileIO::open(path) {
+    Err(_) => Err("File couldn't be opened".to_owned()),
+    Ok(mut file) => match file.read_to_end(&mut encoded) {
+      Err(_) => Err("File couldn't be read".to_owned()),
+      Ok(_) => match de::from_bytes::<Torrent>(&encoded) {
+        Err(error) => Err(error.to_string()),
+        Ok(contents) => Ok(contents),
+      },
+    },
+  }
 }
 
 fn announce_list_first(urls: &Vec<Vec<String>>) -> String {
