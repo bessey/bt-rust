@@ -31,6 +31,8 @@
 //     md5sum: Option<String>,
 // }
 
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub struct Info {
     name: String,
@@ -102,9 +104,57 @@ pub struct Torrent {
     // }
 }
 
+// List = Vec<Result>
+// Dict = HashMap<String, Result>
+// Result = String | Int | List | Dict
+
+type List = Vec<Value>;
+type Dict = HashMap<String, Value>;
+
+#[derive(Debug)]
+pub enum Value {
+    StringValue(String),
+    IntValue(i64),
+    ListValue(List),
+    DictValue(Dict),
+}
+
+pub fn bencode_decode(raw: Vec<u8>) -> Value {
+    let start = *raw.first().unwrap() as char;
+    let end = *raw.last().unwrap() as char;
+    match (start, end) {
+        ('i', 'e') => Value::IntValue(0),
+        ('0'..='9', _) => Value::StringValue(String::from("hello")),
+        ('l', 'e') => {
+            let last_but_one = raw.len() - 1;
+            Value::ListValue(build_list(&raw[1..=last_but_one]))
+        }
+        ('d', 'e') => {
+            let last_but_one = raw.len() - 1;
+            Value::DictValue(build_dictionary(&raw[1..=last_but_one]))
+        }
+        _ => panic!("Invalid"),
+    }
+}
+
 pub fn decode_torrent(metainfo: Vec<u8>) -> Torrent {
     let info = Info {
         name: "test".to_string(),
     };
+
+    // Look at the first character
+    // Call implementation for that character
+
+    let result = bencode_decode(metainfo);
+    println!("Value: {:?}", result);
+
     return Torrent { info: info };
+}
+
+fn build_dictionary(raw: &[u8]) -> Dict {
+    return Dict::new();
+}
+
+fn build_list(raw: &[u8]) -> List {
+    return List::new();
 }

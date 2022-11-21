@@ -1,5 +1,3 @@
-use std::collections::{btree_set::Union, HashMap};
-
 use crate::bencode::decode_torrent;
 
 mod bencode;
