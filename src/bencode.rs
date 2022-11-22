@@ -121,7 +121,7 @@ pub fn decode_torrent(metainfo: Vec<u8>) -> Torrent {
 type List = Vec<Value>;
 type Dict = HashMap<String, Value>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Value {
     BytesValue(Vec<u8>),
     IntValue(i64),
@@ -131,23 +131,36 @@ pub enum Value {
 pub fn bencode_decode(raw: Vec<u8>) -> Value {
     let start = *raw.first().unwrap() as char;
     let end = *raw.last().unwrap() as char;
-    let last_but_one = raw.len() - 1;
-    let contents = &raw[1..=last_but_one];
+    let last = raw.len() - 1;
+    let contents = &raw[1..last];
     match (start, end) {
         ('i', 'e') => Value::IntValue(build_int(contents)),
         ('l', 'e') => Value::ListValue(build_list(contents)),
         ('d', 'e') => Value::DictValue(build_dictionary(contents)),
         // Bytes are unusual in not terminating with an e
-        ('0'..='9', _) => Value::BytesValue(build_bytes(&raw[1..])),
+        ('0'..='9', ..) => Value::BytesValue(build_bytes(&raw).to_vec()),
         _ => panic!("Invalid"),
     }
 }
 fn build_int(raw: &[u8]) -> i64 {
-    return 0;
+    let string = String::from_utf8_lossy(raw);
+    return string.parse::<i64>().unwrap();
 }
 
-fn build_bytes(raw: &[u8]) -> Vec<u8> {
-    return raw.to_vec();
+fn build_bytes(raw: &[u8]) -> &[u8] {
+    // step over slice, confirming each character is a 0-9 until we reach the :
+    // parse that into a number
+    // return the next <number> bytes
+
+    let byte_length_str: Vec<u8> = raw
+        .into_iter()
+        .map(|s| *s)
+        .take_while(|x| *x as char >= '0' && *x as char <= '9')
+        .collect();
+    let byte_length: usize = String::from_utf8_lossy(&byte_length_str).parse().unwrap();
+    let first_digit_idx = byte_length_str.len() + 1;
+    let last_digit_idx = first_digit_idx + byte_length;
+    return &raw[first_digit_idx..last_digit_idx];
 }
 
 fn build_dictionary(raw: &[u8]) -> Dict {
@@ -156,4 +169,42 @@ fn build_dictionary(raw: &[u8]) -> Dict {
 
 fn build_list(raw: &[u8]) -> List {
     return List::new();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_int() {
+        let raw = "42".as_bytes();
+        assert_eq!(build_int(raw), 42);
+    }
+
+    #[test]
+    fn test_build_int_negative() {
+        let negative = "-13".as_bytes();
+        assert_eq!(build_int(negative), -13);
+    }
+
+    #[test]
+    fn test_build_bytes() {
+        let raw = "4:spam".as_bytes();
+        assert_eq!(build_bytes(raw), "spam".as_bytes());
+    }
+
+    #[test]
+    fn test_bencode_decode_int() {
+        let raw = "i13e".as_bytes().to_vec();
+        assert_eq!(bencode_decode(raw), Value::IntValue(13));
+    }
+
+    #[test]
+    fn test_bencode_decode_bytes() {
+        let raw = "4:spam".as_bytes().to_vec();
+        assert_eq!(
+            bencode_decode(raw),
+            Value::BytesValue("spam".as_bytes().to_vec())
+        );
+    }
 }
