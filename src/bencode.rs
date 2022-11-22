@@ -90,7 +90,7 @@ pub fn decode_torrent(metainfo: Vec<u8>) -> Torrent {
     // Look at the first character
     // Call implementation for that character
 
-    let result = bencode_decode(metainfo);
+    let result = bencode_decode(&metainfo);
     println!("Value: {:?}", result);
 
     return Torrent { info: info };
@@ -121,26 +121,28 @@ pub fn decode_torrent(metainfo: Vec<u8>) -> Torrent {
 type List = Vec<Value>;
 type Dict = HashMap<String, Value>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     BytesValue(Vec<u8>),
     IntValue(i64),
     ListValue(List),
     DictValue(Dict),
 }
-pub fn bencode_decode(raw: Vec<u8>) -> Value {
-    let start = *raw.first().unwrap() as char;
-    let end = *raw.last().unwrap() as char;
-    let last = raw.len() - 1;
-    let contents = &raw[1..last];
-    match (start, end) {
-        ('i', 'e') => {
-            let (int, _) = build_int(&raw);
-            Value::IntValue(int)
+pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
+    match *raw.first().unwrap() as char {
+        'i' => {
+            let (int, remainder) = build_int(&raw);
+            (Value::IntValue(int), &remainder)
         }
-        ('0'..='9', ..) => Value::BytesValue(build_bytes(&raw).to_vec()),
-        ('l', 'e') => Value::ListValue(build_list(contents)),
-        ('d', 'e') => Value::DictValue(build_dictionary(contents)),
+        '0'..='9' => {
+            let (bytes, remainder) = build_bytes(&raw);
+            (Value::BytesValue(bytes.to_vec()), remainder)
+        }
+        'l' => {
+            let (list, remainder) = build_list(&raw);
+            (Value::ListValue(list), remainder)
+        }
+        'd' => (Value::DictValue(build_dictionary(&raw)), &[] as &[u8]),
         _ => panic!("Invalid"),
     }
 }
@@ -163,7 +165,7 @@ fn build_int(raw: &[u8]) -> (i64, &[u8]) {
 // steps over slice, confirming each character is a 0-9 until we reach the :
 // parse that into a number
 // return the next <number> bytes
-fn build_bytes(raw: &[u8]) -> &[u8] {
+fn build_bytes(raw: &[u8]) -> (&[u8], &[u8]) {
     let byte_length_str: Vec<u8> = raw
         .into_iter()
         .map(|s| *s)
@@ -172,15 +174,21 @@ fn build_bytes(raw: &[u8]) -> &[u8] {
     let byte_length: usize = String::from_utf8_lossy(&byte_length_str).parse().unwrap();
     let first_digit_idx = byte_length_str.len() + 1;
     let last_digit_idx = first_digit_idx + byte_length;
-    return &raw[first_digit_idx..last_digit_idx];
+    return (
+        &raw[first_digit_idx..last_digit_idx],
+        &raw[last_digit_idx..],
+    );
 }
 
 fn build_dictionary(raw: &[u8]) -> Dict {
     return Dict::new();
 }
 
-fn build_list(raw: &[u8]) -> List {
-    return List::new();
+fn build_list(raw: &[u8]) -> (List, &[u8]) {
+    assert!(*&raw[0] as char == 'l');
+    //
+
+    return (List::new(), &raw);
 }
 
 #[cfg(test)]
@@ -197,28 +205,40 @@ mod tests {
 
     #[test]
     fn test_build_int_negative() {
-        let negative = "i-13e".as_bytes();
-        assert_eq!(build_int(negative), (-13, NO_REMAINDER));
+        let raw = "i-13e".as_bytes();
+        assert_eq!(build_int(raw), (-13, NO_REMAINDER));
     }
 
     #[test]
     fn test_build_bytes() {
         let raw = "4:spam".as_bytes();
-        assert_eq!(build_bytes(raw), "spam".as_bytes());
+        assert_eq!(build_bytes(raw), ("spam".as_bytes(), NO_REMAINDER));
+    }
+
+    #[test]
+    fn test_build_list() {
+        let raw = "li12ei34ee".as_bytes();
+        assert_eq!(
+            build_list(raw),
+            (
+                [Value::IntValue(12), Value::IntValue(34)].to_vec(),
+                NO_REMAINDER
+            )
+        );
     }
 
     #[test]
     fn test_bencode_decode_int() {
-        let raw = "i13e".as_bytes().to_vec();
-        assert_eq!(bencode_decode(raw), Value::IntValue(13));
+        let raw = "i13e".as_bytes();
+        assert_eq!(bencode_decode(raw), (Value::IntValue(13), NO_REMAINDER));
     }
 
     #[test]
     fn test_bencode_decode_bytes() {
-        let raw = "4:spam".as_bytes().to_vec();
+        let raw = "4:spam".as_bytes();
         assert_eq!(
             bencode_decode(raw),
-            Value::BytesValue("spam".as_bytes().to_vec())
+            (Value::BytesValue("spam".as_bytes().to_vec()), NO_REMAINDER)
         );
     }
 }
