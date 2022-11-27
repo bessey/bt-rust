@@ -1,7 +1,8 @@
-use crate::bencode::decode_torrent;
-
 mod bencode;
 mod metainfo;
+mod torrentfile;
+
+use crate::torrentfile::decode_torrent;
 
 fn main() {
     let target = "./archlinux-2020.01.01-x86_64.iso.torrent";
