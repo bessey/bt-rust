@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-type List = Vec<Value>;
-type Dict = HashMap<String, Value>;
+type List<'a> = Vec<Value<'a>>;
+type Dict<'a> = HashMap<&'a [u8], Value<'a>>;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Value {
+pub enum Value<'a> {
     BytesValue(Vec<u8>),
     IntValue(i64),
-    ListValue(List),
-    DictValue(Dict),
+    ListValue(List<'a>),
+    DictValue(Dict<'a>),
 }
 
 pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
@@ -88,10 +88,9 @@ fn build_dictionary(raw: &[u8]) -> (Dict, &[u8]) {
     let mut remainder = &raw[1..];
     while *&remainder[0] as char != 'e' {
         let (key, new_remainder) = parse_dict_key(&remainder);
-        let key_string = String::from_utf8(key.to_vec()).unwrap();
         let (value, new_remainder) = bencode_decode(&new_remainder);
         remainder = new_remainder;
-        dict.insert(key_string, value);
+        dict.insert(key, value);
     }
     return (dict, &remainder[1..]);
 }
@@ -171,10 +170,10 @@ mod tests {
             (
                 Dict::from([
                     (
-                        "bar".to_string(),
+                        "bar".as_bytes(),
                         Value::BytesValue("spam".as_bytes().to_vec())
                     ),
-                    ("foo".to_string(), Value::IntValue(42))
+                    ("foo".as_bytes(), Value::IntValue(42))
                 ]),
                 NO_REMAINDER
             )
