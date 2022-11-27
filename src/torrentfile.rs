@@ -9,7 +9,7 @@
 //     md5sum: Option<String>,
 // }
 
-use crate::bencode::bencode_decode;
+use crate::bencode::decode;
 
 #[derive(Debug)]
 pub struct Info {
@@ -90,7 +90,7 @@ pub fn decode_torrent(metainfo: Vec<u8>) -> Torrent {
     // Look at the first character
     // Call implementation for that character
 
-    let result = bencode_decode(&metainfo);
+    let result = decode(&metainfo);
     println!("Value: {:?}", result);
 
     return Torrent { info: info };

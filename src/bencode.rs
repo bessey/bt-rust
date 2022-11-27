@@ -5,13 +5,21 @@ type Dict<'a> = HashMap<&'a str, Value<'a>>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value<'a> {
-    BytesValue(Vec<u8>),
+    BytesValue(&'a [u8]),
     IntValue(i64),
     ListValue(List<'a>),
     DictValue(Dict<'a>),
 }
 
-pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
+const NO_REMAINDER: &[u8] = &[];
+
+pub fn decode<'a>(raw: &'a [u8]) -> Value {
+    let (value, remainder) = decode_with_remainder(raw);
+    assert_eq!(remainder, NO_REMAINDER);
+    return value;
+}
+
+fn decode_with_remainder<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
     match *raw.first().unwrap() as char {
         // An integer is encoded as i<integer encoded in base ten ASCII>e. Leading zeros are not allowed (although the number
         // zero is still represented as "0"). Negative values are encoded by prefixing the number with a hyphen-minus. The
@@ -28,7 +36,7 @@ pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
         // additionally append a comma suffix after the byte sequence.
         '0'..='9' => {
             let (bytes, remainder) = build_bytes(&raw);
-            (Value::BytesValue(bytes.to_vec()), remainder)
+            (Value::BytesValue(bytes), remainder)
         }
         // A list of values is encoded as l<contents>e . The contents consist of the bencoded elements of the list, in order,
         // concatenated. A list consisting of the string "spam" and the number 42 would be encoded as: l4:spami42ee. Note the
@@ -87,15 +95,15 @@ fn build_dictionary(raw: &[u8]) -> (Dict, &[u8]) {
     let mut dict = Dict::new();
     let mut remainder = &raw[1..];
     while *&remainder[0] as char != 'e' {
-        let (key, new_remainder) = parse_dict_key(&remainder);
-        let (value, new_remainder) = bencode_decode(&new_remainder);
+        let (key, new_remainder) = decode_dict_key(&remainder);
+        let (value, new_remainder) = decode_with_remainder(&new_remainder);
         remainder = new_remainder;
         dict.insert(key, value);
     }
     return (dict, &remainder[1..]);
 }
 
-fn parse_dict_key(raw: &[u8]) -> (&str, &[u8]) {
+fn decode_dict_key(raw: &[u8]) -> (&str, &[u8]) {
     let int_str: Vec<u8> = raw
         .into_iter()
         .map(|s| *s)
@@ -117,7 +125,7 @@ fn build_list(raw: &[u8]) -> (List, &[u8]) {
     let mut remainder = &raw[1..];
     let list = &mut List::new();
     while *&remainder[0] as char != 'e' {
-        let (list_item, new_remainder) = bencode_decode(remainder);
+        let (list_item, new_remainder) = decode_with_remainder(remainder);
         list.push(list_item);
         remainder = new_remainder;
     }
@@ -129,58 +137,57 @@ fn build_list(raw: &[u8]) -> (List, &[u8]) {
 mod tests {
     use super::*;
 
-    const NO_REMAINDER: &[u8] = &[];
-
     #[test]
-    fn test_build_int() {
-        assert_eq!(build_int(b"i42e"), (42, NO_REMAINDER));
+    fn test_decode_int() {
+        assert_eq!(decode(b"i42e"), Value::IntValue(42));
     }
 
     #[test]
-    fn test_build_int_negative() {
-        assert_eq!(build_int(b"i-13e"), (-13, NO_REMAINDER));
+    fn test_decode_int_negative() {
+        assert_eq!(decode(b"i-13e"), Value::IntValue(-13));
     }
 
     #[test]
-    fn test_build_bytes() {
-        assert_eq!(build_bytes(b"4:spam"), ("spam".as_bytes(), NO_REMAINDER));
+    fn test_decode_bytes() {
+        assert_eq!(decode(b"4:spam"), Value::BytesValue(b"spam"));
     }
 
     #[test]
-    fn test_build_list() {
+    fn test_decode_list() {
         assert_eq!(
-            build_list(b"li12ei34ee"),
-            (
-                [Value::IntValue(12), Value::IntValue(34)].to_vec(),
-                NO_REMAINDER
-            )
+            decode(b"li12ei34ee"),
+            Value::ListValue(List::from([Value::IntValue(12), Value::IntValue(34)]))
         );
     }
 
-    // {"bar": "spam", "foo": 42}), would be encoded as follows: d3:bar4:spam3:fooi42ee
     #[test]
-    fn test_build_dict() {
+    fn test_decode_dict() {
         assert_eq!(
-            build_dictionary(b"d3:bar4:spam3:fooi42ee"),
-            (
-                Dict::from([
-                    ("bar", Value::BytesValue(b"spam".to_vec())),
-                    ("foo", Value::IntValue(42))
-                ]),
-                NO_REMAINDER
-            )
+            decode(b"d3:bar4:spam3:fooi42ee"),
+            Value::DictValue(Dict::from([
+                ("bar", Value::BytesValue(b"spam")),
+                ("foo", Value::IntValue(42))
+            ]))
         );
-    }
-    #[test]
-    fn test_bencode_decode_int() {
-        assert_eq!(bencode_decode(b"i13e"), (Value::IntValue(13), NO_REMAINDER));
     }
 
     #[test]
-    fn test_bencode_decode_bytes() {
+    fn test_decode_nested_complex() {
         assert_eq!(
-            bencode_decode(b"4:spam"),
-            (Value::BytesValue(b"spam".to_vec()), NO_REMAINDER)
+            decode(b"d3:barl4:spam4:spame3:food3:bazi42eee"),
+            Value::DictValue(Dict::from([
+                (
+                    "bar",
+                    Value::ListValue(List::from([
+                        Value::BytesValue(b"spam"),
+                        Value::BytesValue(b"spam")
+                    ]))
+                ),
+                (
+                    "foo",
+                    Value::DictValue(Dict::from([("baz", Value::IntValue(42))]))
+                )
+            ]))
         );
     }
 }
