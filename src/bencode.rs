@@ -53,7 +53,7 @@ pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
             let (dict, remainder) = build_dictionary(&raw);
             (Value::DictValue(dict), remainder)
         }
-        _ => panic!("Invalid"),
+        x => panic!("Unexpected {:?}", x),
     }
 }
 fn build_int(raw: &[u8]) -> (i64, &[u8]) {
@@ -91,7 +91,34 @@ fn build_bytes(raw: &[u8]) -> (&[u8], &[u8]) {
 }
 
 fn build_dictionary(raw: &[u8]) -> (Dict, &[u8]) {
-    return (Dict::new(), NO_REMAINDER);
+    assert!(*&raw[0] as char == 'd');
+    let mut dict = Dict::new();
+    let mut remainder = &raw[1..];
+    while *&remainder[0] as char != 'e' {
+        let (key, new_remainder) = parse_dict_key(&remainder);
+        let key_string = String::from_utf8(key.to_vec()).unwrap();
+        let (value, new_remainder) = bencode_decode(&new_remainder);
+        remainder = new_remainder;
+        dict.insert(key_string, value);
+    }
+    return (dict, &remainder[1..]);
+}
+
+fn parse_dict_key(raw: &[u8]) -> (&[u8], &[u8]) {
+    let int_str: Vec<u8> = raw
+        .into_iter()
+        .map(|s| *s)
+        .take_while(|x| *x as char >= '0' && *x as char <= '9')
+        .collect();
+    assert!(*&raw[int_str.len()] as char == ':');
+
+    let remainder = &raw[int_str.len() + 1..];
+    let string = String::from_utf8_lossy(&int_str);
+    let key_length = string.parse::<usize>().unwrap();
+    let key = &remainder[0..key_length];
+    let remainder = &remainder[key_length..];
+
+    return (key, remainder);
 }
 
 fn build_list(raw: &[u8]) -> (List, &[u8]) {
@@ -110,6 +137,8 @@ fn build_list(raw: &[u8]) -> (List, &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NO_REMAINDER: &[u8] = &[];
 
     #[test]
     fn test_build_int() {
