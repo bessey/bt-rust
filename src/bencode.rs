@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 type List<'a> = Vec<Value<'a>>;
-type Dict<'a> = HashMap<&'a [u8], Value<'a>>;
+type Dict<'a> = HashMap<&'a str, Value<'a>>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value<'a> {
@@ -95,7 +95,7 @@ fn build_dictionary(raw: &[u8]) -> (Dict, &[u8]) {
     return (dict, &remainder[1..]);
 }
 
-fn parse_dict_key(raw: &[u8]) -> (&[u8], &[u8]) {
+fn parse_dict_key(raw: &[u8]) -> (&str, &[u8]) {
     let int_str: Vec<u8> = raw
         .into_iter()
         .map(|s| *s)
@@ -109,7 +109,7 @@ fn parse_dict_key(raw: &[u8]) -> (&[u8], &[u8]) {
     let key = &remainder[0..key_length];
     let remainder = &remainder[key_length..];
 
-    return (key, remainder);
+    return (std::str::from_utf8(key).unwrap(), remainder);
 }
 
 fn build_list(raw: &[u8]) -> (List, &[u8]) {
@@ -133,27 +133,23 @@ mod tests {
 
     #[test]
     fn test_build_int() {
-        let raw = "i42e".as_bytes();
-        assert_eq!(build_int(raw), (42, NO_REMAINDER));
+        assert_eq!(build_int(b"i42e"), (42, NO_REMAINDER));
     }
 
     #[test]
     fn test_build_int_negative() {
-        let raw = "i-13e".as_bytes();
-        assert_eq!(build_int(raw), (-13, NO_REMAINDER));
+        assert_eq!(build_int(b"i-13e"), (-13, NO_REMAINDER));
     }
 
     #[test]
     fn test_build_bytes() {
-        let raw = "4:spam".as_bytes();
-        assert_eq!(build_bytes(raw), ("spam".as_bytes(), NO_REMAINDER));
+        assert_eq!(build_bytes(b"4:spam"), ("spam".as_bytes(), NO_REMAINDER));
     }
 
     #[test]
     fn test_build_list() {
-        let raw = "li12ei34ee".as_bytes();
         assert_eq!(
-            build_list(raw),
+            build_list(b"li12ei34ee"),
             (
                 [Value::IntValue(12), Value::IntValue(34)].to_vec(),
                 NO_REMAINDER
@@ -164,16 +160,12 @@ mod tests {
     // {"bar": "spam", "foo": 42}), would be encoded as follows: d3:bar4:spam3:fooi42ee
     #[test]
     fn test_build_dict() {
-        let raw = "d3:bar4:spam3:fooi42ee".as_bytes();
         assert_eq!(
-            build_dictionary(raw),
+            build_dictionary(b"d3:bar4:spam3:fooi42ee"),
             (
                 Dict::from([
-                    (
-                        "bar".as_bytes(),
-                        Value::BytesValue("spam".as_bytes().to_vec())
-                    ),
-                    ("foo".as_bytes(), Value::IntValue(42))
+                    ("bar", Value::BytesValue(b"spam".to_vec())),
+                    ("foo", Value::IntValue(42))
                 ]),
                 NO_REMAINDER
             )
@@ -181,16 +173,14 @@ mod tests {
     }
     #[test]
     fn test_bencode_decode_int() {
-        let raw = "i13e".as_bytes();
-        assert_eq!(bencode_decode(raw), (Value::IntValue(13), NO_REMAINDER));
+        assert_eq!(bencode_decode(b"i13e"), (Value::IntValue(13), NO_REMAINDER));
     }
 
     #[test]
     fn test_bencode_decode_bytes() {
-        let raw = "4:spam".as_bytes();
         assert_eq!(
-            bencode_decode(raw),
-            (Value::BytesValue("spam".as_bytes().to_vec()), NO_REMAINDER)
+            bencode_decode(b"4:spam"),
+            (Value::BytesValue(b"spam".to_vec()), NO_REMAINDER)
         );
     }
 }
