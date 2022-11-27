@@ -128,6 +128,9 @@ pub enum Value {
     ListValue(List),
     DictValue(Dict),
 }
+
+const NO_REMAINDER: &[u8] = &[];
+
 pub fn bencode_decode<'a>(raw: &'a [u8]) -> (Value, &'a [u8]) {
     match *raw.first().unwrap() as char {
         'i' => {
@@ -186,16 +189,20 @@ fn build_dictionary(raw: &[u8]) -> Dict {
 
 fn build_list(raw: &[u8]) -> (List, &[u8]) {
     assert!(*&raw[0] as char == 'l');
-    //
+    let mut remainder = &raw[1..];
+    let list = &mut List::new();
+    while *&remainder[0] as char != 'e' {
+        let (list_item, new_remainder) = bencode_decode(remainder);
+        list.push(list_item);
+        remainder = new_remainder;
+    }
 
-    return (List::new(), &raw);
+    return (list.to_vec(), &remainder[1..]);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const NO_REMAINDER: &[u8] = &[];
 
     #[test]
     fn test_build_int() {
