@@ -2,7 +2,7 @@ mod bencode;
 mod metainfo;
 mod torrentfile;
 
-use crate::torrentfile::decode_torrent;
+use crate::{bencode::decode, torrentfile::decode_torrent};
 
 fn main() {
     let target = "./archlinux-2020.01.01-x86_64.iso.torrent";
@@ -13,7 +13,9 @@ fn main() {
 
     println!("Torrent bytes: {}", metainfo.len());
 
-    let torrent = decode_torrent(metainfo);
+    let decoded = decode(&metainfo);
+    println!("{:?}", decoded);
 
-    println!("{:?}", torrent);
+    // let torrent = decode_torrent(metainfo);
+    // println!("{:?}", torrent);
 }
