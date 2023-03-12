@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 reqwest = { version = "0.10", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
 sha-1 = "0.8.2"

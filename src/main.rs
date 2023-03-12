@@ -1,4 +1,5 @@
 mod bencode;
+mod bencode_serde;
 mod metainfo;
 mod torrentfile;
 
