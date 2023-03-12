@@ -125,6 +125,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             'i' => self.deserialize_i64(visitor),
             '0'..='9' => self.deserialize_bytes(visitor),
             'l' => self.deserialize_seq(visitor),
+            'd' => self.deserialize_map(visitor),
             _ => Err(Error::Syntax),
         }
     }
@@ -283,22 +284,34 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         unimplemented!()
     }
-    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        // Parse the opening brace of the map.
+        if self.next_char()? != 'd' {
+            return Err(Error::Syntax);
+        }
+
+        // Give the visitor access to each entry of the map.
+        let value = visitor.visit_map(ListWrapped::new(self))?;
+        // Parse the closing brace of the map.
+        if self.next_char()? == 'e' {
+            Ok(value)
+        } else {
+            Err(Error::ExpectedEnd)
+        }
     }
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
         _fields: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_map(visitor)
     }
     fn deserialize_enum<V>(
         self,
@@ -311,11 +324,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         unimplemented!()
     }
-    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_bytes(visitor)
     }
     fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
     where
@@ -353,6 +366,32 @@ impl<'de, 'a> SeqAccess<'de> for ListWrapped<'a, 'de> {
     }
 }
 
+// `MapAccess` is provided to the `Visitor` to give it the ability to iterate
+// through entries of the map.
+impl<'de, 'a> MapAccess<'de> for ListWrapped<'a, 'de> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        // Check if there are no more entries.
+        if self.de.peek_char()? == 'e' {
+            return Ok(None);
+        }
+        // Deserialize a map key.
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        // Deserialize a map value.
+        seed.deserialize(&mut *self.de)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,6 +412,22 @@ mod tests {
         assert_eq!(
             vec![b"foo", b"bar"],
             from_bytes::<Vec<&[u8]>>(b"l3:foo3:bare").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_map() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct S<'a> {
+            bar: &'a [u8],
+            foo: i32,
+        }
+        assert_eq!(
+            S {
+                bar: b"spam",
+                foo: 42
+            },
+            from_bytes::<S>(b"d3:bar4:spam3:fooi42ee").unwrap()
         );
     }
 
