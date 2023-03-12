@@ -24,6 +24,7 @@ pub enum Error {
     Eof,
     ExpectedInteger,
     ExpectedIntegerOrEnd,
+    ExpectedEnd,
     Syntax,
     TrailingCharacters,
 }
@@ -45,7 +46,8 @@ impl Display for Error {
         match self {
             Error::Message(msg) => formatter.write_str(msg),
             Error::ExpectedInteger => formatter.write_str("expected integer"),
-            Error::ExpectedIntegerOrEnd => formatter.write_str("expected integer or terminator"),
+            Error::ExpectedIntegerOrEnd => formatter.write_str("expected integer or e terminator"),
+            Error::ExpectedEnd => formatter.write_str("expected e terminator"),
             Error::TrailingCharacters => formatter.write_str("unexpected trailing characters"),
             Error::Eof => formatter.write_str("end of file reached unexpectedly"),
             Error::Syntax => formatter.write_str("syntax error"),
