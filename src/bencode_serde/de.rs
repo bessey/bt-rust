@@ -404,6 +404,11 @@ mod tests {
     }
 
     #[test]
+    fn test_bytes() {
+        assert_eq!(b"spam", from_bytes::<&[u8]>(b"4:spam").unwrap());
+    }
+
+    #[test]
     fn test_homogenous_list() {
         assert_eq!(
             vec![123, 321],
@@ -432,7 +437,30 @@ mod tests {
     }
 
     #[test]
-    fn test_string() {
-        assert_eq!(b"spam", from_bytes::<&[u8]>(b"4:spam").unwrap());
+    fn test_the_lot() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct S<'a> {
+            bar: &'a [u8],
+            foo: Vec<i32>,
+            #[serde(borrow)]
+            baz: Vec<&'a [u8]>,
+            zap: R<'a>,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct R<'b> {
+            #[serde(borrow)]
+            taz: Vec<&'b [u8]>,
+        }
+        assert_eq!(
+            S {
+                bar: b"spam",
+                foo: vec![12, 34],
+                baz: vec![b"foo"],
+                zap: R { taz: vec![b"bar"] }
+            },
+            from_bytes::<S>(b"d3:bar4:spam3:fooli12ei34ee3:bazl3:fooe3:zapd3:tazl3:bareee")
+                .unwrap()
+        );
     }
 }
