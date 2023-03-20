@@ -1,6 +1,6 @@
 mod de;
 mod error;
-// mod ser;
+mod ser;
 
 // mod json_de;
 

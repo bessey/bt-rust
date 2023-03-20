@@ -7,9 +7,8 @@ use serde::de::{
 };
 use serde::Deserialize;
 
-use error::{Error, Result};
-
 use super::error;
+use error::{Error, Result};
 
 pub struct Deserializer<'de> {
     // This string starts with the input data and characters are truncated off
