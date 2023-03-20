@@ -1,6 +1,6 @@
 extern crate serde;
 extern crate serde_bencode;
-use md5::{Digest, Md5};
+use sha1::{Digest, Sha1};
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -32,6 +32,7 @@ pub struct Info {
     private: Option<u8>,
 
     // Single File Mode
+    #[serde(default)]
     name: String,
     #[serde(default)]
     length: Option<i64>,
@@ -122,10 +123,10 @@ pub fn read_torrent_file(path: &str) -> Result<Torrent, String> {
         .or(Err("Couldn't create file"))?
         .write(&info_bytes)
         .or(Err("Couldn't write file"))?;
-    let mut hasher = Md5::new();
+    let mut hasher = Sha1::new();
     hasher.update(info_bytes);
     let hex_hash = base16ct::lower::encode_string(&hasher.finalize());
-    torrent.info.md5sum = Some(hex_hash);
+    torrent.info.root_hash = Some(hex_hash);
 
     return Ok(torrent);
 }
