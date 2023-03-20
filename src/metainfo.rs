@@ -1,14 +1,19 @@
 extern crate serde;
 extern crate serde_bencode;
+use md5::{Digest, Md5};
+
 use serde::Deserialize;
+use serde::Serialize;
 use serde_bencode::de;
+use serde_bencode::ser;
 use std::fs::File as FileIO;
 use std::io::Read;
+use std::io::Write;
 
 #[derive(Debug, Deserialize)]
 pub struct Node(String, i64);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct File {
     path: Vec<String>,
     length: i64,
@@ -16,25 +21,29 @@ pub struct File {
     md5sum: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Info {
-    name: String,
+    // Common
     #[serde(with = "serde_bytes")]
     pieces: Vec<u8>,
     #[serde(rename = "piece length")]
     piece_length: i64,
     #[serde(default)]
-    md5sum: Option<String>,
+    private: Option<u8>,
+
+    // Single File Mode
+    name: String,
     #[serde(default)]
     length: Option<i64>,
     #[serde(default)]
+    md5sum: Option<String>,
+
+    // Multiple File mode
+    #[serde(default)]
     files: Option<Vec<File>>,
-    #[serde(default)]
-    private: Option<u8>,
-    #[serde(default)]
-    path: Option<Vec<String>>,
-    #[serde(default)]
-    #[serde(rename = "root hash")]
+
+    // Misc
+    #[serde(skip_serializing)]
     root_hash: Option<String>,
 }
 
@@ -90,9 +99,8 @@ impl Torrent {
         println!("encoding:\t{:?}", self.encoding);
         println!("piece length:\t{:?}", self.info.piece_length);
         println!("private:\t{:?}", self.info.private);
-        println!("root hash:\t{:?}", self.info.root_hash);
         println!("md5sum:\t\t{:?}", self.info.md5sum);
-        println!("path:\t\t{:?}", self.info.path);
+        println!("root hash:\t{:?}", self.info.root_hash);
         if let &Some(ref files) = &self.info.files {
             for f in files {
                 println!("file path:\t{:?}", f.path);
@@ -105,16 +113,21 @@ impl Torrent {
 
 pub fn read_torrent_file(path: &str) -> Result<Torrent, String> {
     let mut encoded = Vec::new();
-    match FileIO::open(path) {
-        Err(_) => Err("File couldn't be opened".to_owned()),
-        Ok(mut file) => match file.read_to_end(&mut encoded) {
-            Err(_) => Err("File couldn't be read".to_owned()),
-            Ok(_) => match de::from_bytes::<Torrent>(&encoded) {
-                Err(error) => Err(error.to_string()),
-                Ok(contents) => Ok(contents),
-            },
-        },
-    }
+    let mut file = FileIO::open(path).or(Err("File couldn't be opened"))?;
+    file.read_to_end(&mut encoded)
+        .or(Err("File couldn't be read"))?;
+    let mut torrent = de::from_bytes::<Torrent>(&encoded).or(Err("Torrent file invalid"))?;
+    let info_bytes = ser::to_bytes(&torrent.info).or(Err("Info invalid"))?;
+    FileIO::create("metainfo")
+        .or(Err("Couldn't create file"))?
+        .write(&info_bytes)
+        .or(Err("Couldn't write file"))?;
+    let mut hasher = Md5::new();
+    hasher.update(info_bytes);
+    let hex_hash = base16ct::lower::encode_string(&hasher.finalize());
+    torrent.info.md5sum = Some(hex_hash);
+
+    return Ok(torrent);
 }
 
 fn announce_list_first(urls: &Vec<Vec<String>>) -> String {
